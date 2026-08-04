@@ -1,0 +1,24 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+
+# IDE settings
+.vscode/
+.idea/
+
+# Locally cloned repositories
+storage/repositories/*
+
+# Keep the empty directory in Git
+!storage/repositories/.gitkeep
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
