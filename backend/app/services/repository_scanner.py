@@ -1,8 +1,13 @@
 from collections import Counter
 from pathlib import Path
 
-from app.models.repository_scan import RepositoryScanSummary
+from app.models.repository_file import RepositoryFile
+from app.models.repository_scan import (
+    RepositoryScanResult,
+    RepositoryScanSummary,
+)
 
+MAX_FILE_SIZE_BYTES = 1_000_000
 
 SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".py": "Python",
@@ -127,7 +132,9 @@ IGNORED_EXTENSIONS: set[str] = {
 }
 
 
-def scan_repository(repository_path: Path) -> RepositoryScanSummary:
+def scan_repository(
+    repository_path: Path,
+) -> RepositoryScanResult:
     if not repository_path.exists():
         raise FileNotFoundError(
             f"Repository path does not exist: {repository_path}"
@@ -141,6 +148,7 @@ def scan_repository(repository_path: Path) -> RepositoryScanSummary:
     total_files = 0
     supported_files = 0
     language_counter: Counter[str] = Counter()
+    repository_files: list[RepositoryFile] = []
 
     for file_path in repository_path.rglob("*"):
         if should_ignore_path(file_path, repository_path):
@@ -156,12 +164,22 @@ def scan_repository(repository_path: Path) -> RepositoryScanSummary:
         if language is None:
             continue
 
+        repository_file = create_repository_file(
+            file_path=file_path,
+            repository_root=repository_path,
+            language=language,
+        )
+
+        if repository_file is None:
+            continue
+
+        repository_files.append(repository_file)
         supported_files += 1
         language_counter[language] += 1
 
     ignored_files = total_files - supported_files
 
-    return RepositoryScanSummary(
+    summary = RepositoryScanSummary(
         total_files=total_files,
         supported_files=supported_files,
         ignored_files=ignored_files,
@@ -172,6 +190,44 @@ def scan_repository(repository_path: Path) -> RepositoryScanSummary:
                 reverse=True,
             )
         ),
+    )
+
+    return RepositoryScanResult(
+        summary=summary,
+        files=repository_files,
+    )
+
+def create_repository_file(
+    file_path: Path,
+    repository_root: Path,
+    language: str,
+) -> RepositoryFile | None:
+    try:
+        size_bytes = file_path.stat().st_size
+    except OSError:
+        return None
+
+    if size_bytes == 0:
+        return None
+
+    if size_bytes > MAX_FILE_SIZE_BYTES:
+        return None
+
+    content = read_text_file(file_path)
+
+    if content is None:
+        return None
+
+    if not content.strip():
+        return None
+
+    relative_path = file_path.relative_to(repository_root)
+
+    return RepositoryFile(
+        relative_path=relative_path.as_posix(),
+        language=language,
+        size_bytes=size_bytes,
+        content=content,
     )
 
 
@@ -203,3 +259,40 @@ def detect_language(file_path: Path) -> str | None:
     return SUPPORTED_EXTENSIONS.get(
         file_path.suffix.lower()
     )
+
+
+def read_text_file(file_path: Path) -> str | None:
+    encodings = (
+        "utf-8",
+        "utf-8-sig",
+        "latin-1",
+    )
+
+    for encoding in encodings:
+        try:
+            return file_path.read_text(encoding=encoding)
+
+        except UnicodeDecodeError:
+            continue
+
+        except OSError:
+            return None
+
+    return None
+
+
+def create_file_previews(
+    repository_path: Path,
+    preview_length: int = 200,
+) -> list[dict[str, str | int]]:
+    scan_result = scan_repository(repository_path)
+
+    return [
+        {
+            "relative_path": repository_file.relative_path,
+            "language": repository_file.language,
+            "size_bytes": repository_file.size_bytes,
+            "content_preview": repository_file.content[:preview_length],
+        }
+        for repository_file in scan_result.files
+    ]

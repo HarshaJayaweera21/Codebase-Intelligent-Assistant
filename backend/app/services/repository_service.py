@@ -48,7 +48,7 @@ def create_repository(repository_url: str) -> RepositoryDetails:
     )
 
     try:
-        scan_summary = scan_repository(local_path)
+        scan_result = scan_repository(local_path)
 
     except (
         OSError,
@@ -69,7 +69,7 @@ def create_repository(repository_url: str) -> RepositoryDetails:
         repository_url=normalized_url,
         local_path=str(local_path),
         status="scanned",
-        scan_summary=scan_summary,
+        scan_summary=scan_result.summary,
     )
 
 

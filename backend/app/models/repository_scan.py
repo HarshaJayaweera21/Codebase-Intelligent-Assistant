@@ -1,9 +1,8 @@
+from dataclasses import dataclass
+
 from pydantic import BaseModel
 
-
-class LanguageSummary(BaseModel):
-    language: str
-    file_count: int
+from app.models.repository_file import RepositoryFile
 
 
 class RepositoryScanSummary(BaseModel):
@@ -11,3 +10,9 @@ class RepositoryScanSummary(BaseModel):
     supported_files: int
     ignored_files: int
     languages: dict[str, int]
+
+
+@dataclass(frozen=True)
+class RepositoryScanResult:
+    summary: RepositoryScanSummary
+    files: list[RepositoryFile]

@@ -3,6 +3,7 @@ from fastapi import (
     HTTPException,
     status,
 )
+from pathlib import Path
 
 from app.core.exceptions import (
     RepositoryCloneError,
@@ -14,6 +15,8 @@ from app.models.repository import (
 )
 from app.services.repository_service import create_repository
 
+from app.models.repository_file import RepositoryFilePreview
+from app.services.repository_scanner import create_file_previews
 
 router = APIRouter(
     prefix="/repositories",
@@ -56,3 +59,19 @@ async def create_repository_endpoint(
         status="scanned",
         scan_summary=repository.scan_summary,
     )
+
+@router.get(
+    "/preview-files",
+    response_model=list[RepositoryFilePreview],
+)
+async def preview_repository_files(
+    repository_path: str,
+) -> list[RepositoryFilePreview]:
+    path = Path(repository_path)
+
+    previews = create_file_previews(path)
+
+    return [
+        RepositoryFilePreview(**preview)
+        for preview in previews
+    ]
