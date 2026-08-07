@@ -31,6 +31,7 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".swift": "Swift",
     ".html": "HTML",
     ".htm": "HTML",
+    ".jsp": "JSP",
     ".css": "CSS",
     ".scss": "SCSS",
     ".md": "Markdown",

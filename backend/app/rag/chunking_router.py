@@ -28,6 +28,7 @@ STRUCTURED_FILE_CHUNKERS: dict[str, Chunker] = {
     "Gradle Configuration": chunk_cohesive_file,
     "Gradle Kotlin Configuration": chunk_cohesive_file,
     "HTML": chunk_html_file,
+    "JSP": chunk_html_file,
     "JSON": chunk_json_file,
     "Makefile": chunk_cohesive_file,
     "Markdown": chunk_markdown_file,

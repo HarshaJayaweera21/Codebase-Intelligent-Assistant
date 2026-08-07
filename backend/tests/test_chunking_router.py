@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from app.models.repository_file import RepositoryFile
 from app.rag.chunking_router import (
@@ -6,6 +7,7 @@ from app.rag.chunking_router import (
     chunk_repository_files,
     supports_structural_chunking,
 )
+from app.services.repository_scanner import detect_language
 
 
 def repository_file(language: str, content: str, path: str) -> RepositoryFile:
@@ -56,6 +58,20 @@ class ChunkingRouterTests(unittest.TestCase):
         text_file = repository_file("Plain Text", "Notes", "notes.txt")
         self.assertFalse(supports_structural_chunking("Plain Text"))
         self.assertEqual(chunk_repository_file("repo_router", text_file), [])
+
+    def test_jsp_is_detected_and_routed_through_html_chunking(self):
+        source = """<%@ page contentType="text/html" %>
+<html><body><form id="loginForm"><input name="password"></form></body></html>
+"""
+
+        self.assertEqual(detect_language(Path("login.jsp")), "JSP")
+        self.assertTrue(supports_structural_chunking("JSP"))
+        chunks = chunk_repository_file(
+            "repo_router",
+            repository_file("JSP", source, "login.jsp"),
+        )
+        self.assertTrue(chunks)
+        self.assertEqual(chunks[0].file_path, "login.jsp")
 
     def test_chunks_multiple_files_in_input_order(self):
         files = [
