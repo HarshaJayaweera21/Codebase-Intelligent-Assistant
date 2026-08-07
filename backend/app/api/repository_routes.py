@@ -18,8 +18,10 @@ from app.models.repository_file import RepositoryFilePreview
 from app.services.repository_scanner import create_file_previews
 from app.rag.document_processor import create_langchain_documents
 from app.services.repository_scanner import scan_repository
-from app.rag.tree_sitter_chunker import chunk_code_file
-from app.rag.tree_sitter_profiles import LANGUAGE_PROFILES
+from app.rag.chunking_router import (
+    chunk_repository_file,
+    supports_structural_chunking,
+)
 
 
 router = APIRouter(
@@ -135,16 +137,16 @@ async def preview_code_chunks(
         )
 
     
-    if repository_file.language not in LANGUAGE_PROFILES:
+    if not supports_structural_chunking(repository_file.language):
         raise HTTPException(
             status_code=400,
             detail=(
-                "Tree-sitter structural chunking is not "
+                "Structural chunking is not "
                 "supported for this file type."
             ),
         )
 
-    chunks = chunk_code_file(
+    chunks = chunk_repository_file(
         repository_id=repository_id,
         repository_file=repository_file,
     )
