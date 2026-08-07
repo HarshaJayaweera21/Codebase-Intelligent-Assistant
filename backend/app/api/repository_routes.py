@@ -14,9 +14,13 @@ from app.models.repository import (
     RepositoryCreateResponse,
 )
 from app.services.repository_service import create_repository
-
 from app.models.repository_file import RepositoryFilePreview
 from app.services.repository_scanner import create_file_previews
+from app.rag.document_processor import create_langchain_documents
+from app.services.repository_scanner import scan_repository
+from app.rag.tree_sitter_chunker import chunk_code_file
+from app.rag.tree_sitter_profiles import LANGUAGE_PROFILES
+
 
 router = APIRouter(
     prefix="/repositories",
@@ -74,4 +78,98 @@ async def preview_repository_files(
     return [
         RepositoryFilePreview(**preview)
         for preview in previews
+    ]
+
+
+@router.get("/preview-documents")
+async def preview_langchain_documents(
+    repository_id: str,
+) -> list[dict]:
+    repository_path = (
+        Path("storage/repositories") / repository_id
+    )
+
+    scan_result = scan_repository(repository_path)
+
+    documents = create_langchain_documents(
+        repository_id=repository_id,
+        repository_files=scan_result.files,
+    )
+
+    return [
+        {
+            "page_content_preview": document.page_content[:200],
+            "metadata": document.metadata,
+        }
+        for document in documents
+    ]
+
+
+@router.get("/preview-code-chunks")
+async def preview_code_chunks(
+    repository_id: str,
+    file_path: str,
+) -> list[dict]:
+    repository_path = (
+        Path("storage/repositories")
+        / repository_id
+    )
+
+    scan_result = scan_repository(
+        repository_path
+    )
+
+    repository_file = next(
+        (
+            file
+            for file in scan_result.files
+            if file.relative_path == file_path
+        ),
+        None,
+    )
+
+    if repository_file is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Repository file not found.",
+        )
+
+    
+    if repository_file.language not in LANGUAGE_PROFILES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Tree-sitter structural chunking is not "
+                "supported for this file type."
+            ),
+        )
+
+    chunks = chunk_code_file(
+        repository_id=repository_id,
+        repository_file=repository_file,
+    )
+
+    return [
+        {
+            "chunk_type": chunk.chunk_type,
+            "symbol_name": chunk.symbol_name,
+
+            "symbol_start_line": (
+                chunk.symbol_start_line
+            ),
+            "symbol_end_line": (
+                chunk.symbol_end_line
+            ),
+
+            "source_ranges": [
+                {
+                    "start_line": source_range.start_line,
+                    "end_line": source_range.end_line,
+                }
+                for source_range in chunk.source_ranges
+            ],
+
+            "content_preview": chunk.content[:300],
+        }
+        for chunk in chunks
     ]
