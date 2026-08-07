@@ -57,6 +57,7 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
         node_types={
             "class_declaration": "class_context",
             "function_declaration": "function",
+            "generator_function_declaration": "function",
             "method_definition": "method",
         },
         context_node_types=frozenset({
@@ -69,6 +70,7 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
         node_types={
             "class_declaration": "class_context",
             "function_declaration": "function",
+            "generator_function_declaration": "function",
             "method_definition": "method",
         },
         context_node_types=frozenset({
@@ -85,7 +87,9 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
             "class_declaration": "class_context",
             "interface_declaration": "interface_context",
             "function_declaration": "function",
+            "generator_function_declaration": "function",
             "method_definition": "method",
+            "method_signature": "method",
             "enum_declaration": "enum_context",
             "type_alias_declaration": "type_alias",
         },
@@ -102,7 +106,9 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
             "class_declaration": "class_context",
             "interface_declaration": "interface_context",
             "function_declaration": "function",
+            "generator_function_declaration": "function",
             "method_definition": "method",
+            "method_signature": "method",
             "enum_declaration": "enum_context",
             "type_alias_declaration": "type_alias",
         },
@@ -187,20 +193,26 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
     # C#
     # ------------------------------------------------------------------
     "C#": LanguageProfile(
-        parser_name="c_sharp",
+        parser_name="csharp",
         node_types={
+            "namespace_declaration": "namespace_context",
+            "file_scoped_namespace_declaration": "namespace_context",
             "class_declaration": "class_context",
             "interface_declaration": "interface_context",
             "struct_declaration": "struct_context",
             "enum_declaration": "enum_context",
             "method_declaration": "method",
             "constructor_declaration": "constructor",
+            "record_declaration": "record_context",
         },
         context_node_types=frozenset({
             "class_declaration",
             "interface_declaration",
             "struct_declaration",
             "enum_declaration",
+            "namespace_declaration",
+            "file_scoped_namespace_declaration",
+            "record_declaration",
         }),
     ),
 
@@ -212,9 +224,9 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
         node_types={
             "function_declaration": "function",
             "method_declaration": "method",
-            "type_declaration": "type",
+            "type_spec": "type_context",
         },
-        context_node_types=frozenset(),
+        context_node_types=frozenset({"type_spec"}),
     ),
 
     # ------------------------------------------------------------------
@@ -224,6 +236,7 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
         parser_name="rust",
         node_types={
             "function_item": "function",
+            "function_signature_item": "method",
             "struct_item": "struct_context",
             "enum_item": "enum_context",
             "impl_item": "impl_context",
@@ -245,16 +258,20 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
     "PHP": LanguageProfile(
         parser_name="php",
         node_types={
+            "namespace_definition": "namespace_context",
             "class_declaration": "class_context",
             "interface_declaration": "interface_context",
             "trait_declaration": "trait_context",
             "function_definition": "function",
             "method_declaration": "method",
+            "enum_declaration": "enum_context",
         },
         context_node_types=frozenset({
+            "namespace_definition",
             "class_declaration",
             "interface_declaration",
             "trait_declaration",
+            "enum_declaration",
         }),
     ),
 
@@ -284,6 +301,7 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
             "class_declaration": "class_context",
             "object_declaration": "object_context",
             "function_declaration": "function",
+            "secondary_constructor": "constructor",
         },
         context_node_types=frozenset({
             "class_declaration",
@@ -297,6 +315,7 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
             "class_declaration": "class_context",
             "object_declaration": "object_context",
             "function_declaration": "function",
+            "secondary_constructor": "constructor",
         },
         context_node_types=frozenset({
             "class_declaration",
@@ -315,6 +334,8 @@ LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
             "struct_declaration": "struct_context",
             "enum_declaration": "enum_context",
             "function_declaration": "function",
+            "init_declaration": "constructor",
+            "protocol_function_declaration": "method",
         },
         context_node_types=frozenset({
             "class_declaration",
