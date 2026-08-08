@@ -1,25 +1,31 @@
 from langchain_core.documents import Document
 
-from app.models.repository_file import RepositoryFile
+from app.models.code_chunk import CodeChunk
 
 
-def create_langchain_documents(
-    repository_id: str,
-    repository_files: list[RepositoryFile],
-) -> list[Document]:
-    documents: list[Document] = []
+def code_chunk_to_document(chunk: CodeChunk) -> Document:
+    """Convert one final structural chunk into a LangChain document."""
+    return Document(
+        page_content=chunk.content,
+        metadata={
+            "repository_id": chunk.repository_id,
+            "file_path": chunk.file_path,
+            "language": chunk.language,
+            "chunk_type": chunk.chunk_type,
+            "symbol_name": chunk.symbol_name,
+            "symbol_start_line": chunk.symbol_start_line,
+            "symbol_end_line": chunk.symbol_end_line,
+            "source_ranges": [
+                {
+                    "start_line": source_range.start_line,
+                    "end_line": source_range.end_line,
+                }
+                for source_range in chunk.source_ranges
+            ],
+        },
+    )
 
-    for repository_file in repository_files:
-        document = Document(
-            page_content=repository_file.content,
-            metadata={
-                "repository_id": repository_id,
-                "file_path": repository_file.relative_path,
-                "language": repository_file.language,
-                "size_bytes": repository_file.size_bytes,
-            },
-        )
 
-        documents.append(document)
-
-    return documents
+def create_langchain_documents(chunks: list[CodeChunk]) -> list[Document]:
+    """Convert final chunks to documents while preserving source order."""
+    return [code_chunk_to_document(chunk) for chunk in chunks]

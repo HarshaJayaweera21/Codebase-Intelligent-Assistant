@@ -20,6 +20,7 @@ from app.rag.document_processor import create_langchain_documents
 from app.services.repository_scanner import scan_repository
 from app.rag.chunking_router import (
     chunk_repository_file,
+    chunk_repository_files,
     supports_structural_chunking,
 )
 
@@ -93,10 +94,8 @@ async def preview_langchain_documents(
 
     scan_result = scan_repository(repository_path)
 
-    documents = create_langchain_documents(
-        repository_id=repository_id,
-        repository_files=scan_result.files,
-    )
+    chunks = chunk_repository_files(repository_id, scan_result.files)
+    documents = create_langchain_documents(chunks)
 
     return [
         {
