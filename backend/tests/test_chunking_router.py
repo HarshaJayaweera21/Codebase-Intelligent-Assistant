@@ -53,9 +53,9 @@ class ChunkingRouterTests(unittest.TestCase):
                 self.assertEqual(chunks[0].symbol_name, "enabled")
 
     def test_unsupported_format_waits_for_its_own_chunker(self):
-        yaml_file = repository_file("YAML", "enabled: true", "config.yaml")
-        self.assertFalse(supports_structural_chunking("YAML"))
-        self.assertEqual(chunk_repository_file("repo_router", yaml_file), [])
+        text_file = repository_file("Plain Text", "Notes", "notes.txt")
+        self.assertFalse(supports_structural_chunking("Plain Text"))
+        self.assertEqual(chunk_repository_file("repo_router", text_file), [])
 
     def test_chunks_multiple_files_in_input_order(self):
         files = [
