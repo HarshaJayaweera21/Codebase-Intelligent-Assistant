@@ -8,6 +8,9 @@ __pycache__/
 # Environment variables
 .env
 
+# Local embedding model weights
+models/**/*.gguf
+
 # IDE settings
 .vscode/
 .idea/
