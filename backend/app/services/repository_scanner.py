@@ -40,6 +40,7 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".xml": "XML",
     ".sql": "SQL",
     ".sh": "Shell",
+    ".toml": "TOML",
 }
 
 

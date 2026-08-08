@@ -110,7 +110,8 @@ def create_node_chunk(
     symbol_name: str,
 ) -> CodeChunk:
     start_line = node.start_point.row + 1
-    end_line = node.end_point.row + 1
+    end_line = node.end_point.row + (1 if node.end_point.column else 0)
+    end_line = max(start_line, end_line)
     return CodeChunk(
         repository_id=repository_id,
         file_path=repository_file.relative_path,

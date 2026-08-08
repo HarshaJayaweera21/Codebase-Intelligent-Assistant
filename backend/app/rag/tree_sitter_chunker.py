@@ -101,8 +101,13 @@ def get_node_text(node: Node, source_bytes: bytes) -> str:
 def get_node_source_range(node: Node) -> SourceRange:
     return SourceRange(
         start_line=node.start_point.row + 1,
-        end_line=node.end_point.row + 1,
+        end_line=get_node_end_line(node),
     )
+
+
+def get_node_end_line(node: Node) -> int:
+    end_line = node.end_point.row + (1 if node.end_point.column else 0)
+    return max(node.start_point.row + 1, end_line)
 
 
 def find_identifier(node: Node) -> Node | None:
@@ -370,7 +375,7 @@ def create_structural_chunk(
         chunk_type=chunk_type,
         symbol_name=get_symbol_name(node, source_bytes),
         symbol_start_line=node.start_point.row + 1,
-        symbol_end_line=node.end_point.row + 1,
+        symbol_end_line=get_node_end_line(node),
         source_ranges=source_ranges,
         content=content,
     )
