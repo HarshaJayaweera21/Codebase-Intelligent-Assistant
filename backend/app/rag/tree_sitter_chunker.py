@@ -305,7 +305,9 @@ def create_context_content(
         content = get_node_text(child, source_bytes).strip()
         if content:
             content_parts.append(content)
-            source_ranges.append(get_node_source_range(child))
+            source_range = get_node_source_range(child)
+            if source_range not in source_ranges:
+                source_ranges.append(source_range)
 
     return "\n\n".join(content_parts), tuple(source_ranges)
 

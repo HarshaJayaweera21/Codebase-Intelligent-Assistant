@@ -78,6 +78,28 @@ class ChunkSizeValidatorTests(unittest.TestCase):
             all(part.source_ranges == (SourceRange(7, 7),) for part in parts)
         )
 
+    def test_overlap_starts_at_complete_line_boundary(self):
+        lines = [
+            f"foodItemService.operation{index}(); // " + "x" * 25
+            for index in range(12)
+        ]
+        original = code_chunk(
+            "\n".join(lines),
+            (SourceRange(20, 31),),
+        )
+
+        parts = enforce_chunk_size(
+            [original],
+            max_chunk_chars=160,
+            overlap_chars=45,
+        )
+
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(
+            all(part.content.startswith("foodItemService") for part in parts)
+        )
+        self.assertTrue(all(len(part.content) <= 160 for part in parts))
+
     def test_router_applies_default_size_limit(self):
         source = "FROM python:3.13\n" + "RUN echo value\n" * 180
         repository_file = RepositoryFile(

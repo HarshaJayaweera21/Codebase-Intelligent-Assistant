@@ -1,4 +1,5 @@
 from bisect import bisect_right
+import re
 
 from app.models.code_chunk import CodeChunk, SourceRange
 
@@ -6,6 +7,8 @@ from app.models.code_chunk import CodeChunk, SourceRange
 DEFAULT_MAX_CHUNK_CHARS = 1_500
 DEFAULT_CHUNK_OVERLAP_CHARS = 200
 SPLIT_SEPARATORS = ("\n\n", "\n", "; ", ";", " ")
+BLANK_LINE_PATTERN = re.compile(r"\r?\n[ \t]*\r?\n")
+STATEMENT_END_PATTERN = re.compile(r"[;{}][ \t]*\r?\n")
 
 
 def enforce_chunk_size(
@@ -94,10 +97,90 @@ def split_text_offsets(
         if end >= len(content):
             break
 
-        next_start = max(start + 1, end - overlap_chars)
+        overlap_target = max(start + 1, end - overlap_chars)
+        next_start = find_safe_overlap_start(
+            content,
+            current_start=start,
+            target_start=overlap_target,
+            current_end=end,
+        )
         start = next_start
 
     return offsets
+
+
+def find_safe_overlap_start(
+    content: str,
+    *,
+    current_start: int,
+    target_start: int,
+    current_end: int,
+) -> int:
+    """Move overlap starts to a complete block, line, or word boundary."""
+    blank_line = BLANK_LINE_PATTERN.search(
+        content,
+        target_start,
+        current_end,
+    )
+    if blank_line is not None and blank_line.end() < current_end:
+        return blank_line.end()
+
+    previous_blank_lines = list(
+        BLANK_LINE_PATTERN.finditer(
+            content,
+            current_start,
+            target_start,
+        )
+    )
+    if previous_blank_lines:
+        candidate = previous_blank_lines[-1].end()
+        if current_start < candidate < current_end:
+            return candidate
+
+    previous_statements = list(
+        STATEMENT_END_PATTERN.finditer(
+            content,
+            current_start,
+            target_start,
+        )
+    )
+    if previous_statements:
+        candidate = previous_statements[-1].end()
+        if current_start < candidate < current_end:
+            return candidate
+
+    for separator in ("\n\n", "\r\n\r\n"):
+        boundary = content.find(separator, target_start, current_end)
+        if boundary >= 0:
+            candidate = boundary + len(separator)
+            if current_start < candidate < current_end:
+                return candidate
+
+    previous_newline = content.rfind(
+        "\n",
+        current_start,
+        target_start + 1,
+    )
+    if previous_newline >= current_start:
+        candidate = previous_newline + 1
+        if current_start < candidate < current_end:
+            return candidate
+
+    next_newline = content.find("\n", target_start, current_end)
+    if next_newline >= 0:
+        candidate = next_newline + 1
+        if current_start < candidate < current_end:
+            return candidate
+
+    for separator in ("; ", ";", " ", "\t"):
+        boundary = content.find(separator, target_start, current_end)
+        if boundary >= 0:
+            candidate = boundary + len(separator)
+            if current_start < candidate < current_end:
+                return candidate
+
+    # A single unbroken token longer than the size limit has no safe boundary.
+    return target_start
 
 
 def build_content_line_map(chunk: CodeChunk) -> list[int | None]:

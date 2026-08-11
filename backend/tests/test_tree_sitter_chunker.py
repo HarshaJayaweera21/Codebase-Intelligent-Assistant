@@ -226,7 +226,25 @@ class User { constructor() {} save() { const local = {}; } }
         class_chunk = next(item for item in chunks if item.chunk_type == "class_context")
         self.assertIn("int value = 1", class_chunk.content)
         self.assertNotIn("uniqueMethodBody", class_chunk.content)
-        self.assertGreaterEqual(len(class_chunk.source_ranges), 2)
+        self.assertGreaterEqual(len(class_chunk.source_ranges), 1)
+        self.assertEqual(
+            len(class_chunk.source_ranges),
+            len(set(class_chunk.source_ranges)),
+        )
+
+    def test_class_context_deduplicates_field_and_comment_line_range(self):
+        chunks = chunk(
+            "Java",
+            "class Queue {\n    private int front; // Front index\n}",
+        )
+        class_chunk = next(item for item in chunks if item.chunk_type == "class_context")
+
+        self.assertIn("private int front", class_chunk.content)
+        self.assertIn("Front index", class_chunk.content)
+        self.assertEqual(
+            len(class_chunk.source_ranges),
+            len(set(class_chunk.source_ranges)),
+        )
 
 
 if __name__ == "__main__":
