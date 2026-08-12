@@ -31,6 +31,7 @@ class EmbeddingEndpointTests(unittest.TestCase):
             embedding_dimension=2,
             pinecone_index_dimension=2,
             pinecone_enabled=False,
+            gemini_enabled=False,
         )
         service = ManagedFakeEmbeddings()
         lifespan = create_lifespan(

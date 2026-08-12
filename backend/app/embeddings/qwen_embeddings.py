@@ -28,6 +28,10 @@ class EmbeddingModelLoadError(RuntimeError):
     """Raised when the configured local GGUF model cannot be loaded."""
 
 
+class EmbeddingInputTooLongError(RuntimeError):
+    """Raised when one input exceeds the configured llama.cpp capacity."""
+
+
 class QwenEmbeddings(Embeddings):
     """In-process LangChain embeddings backed by one llama.cpp model."""
 
@@ -38,6 +42,8 @@ class QwenEmbeddings(Embeddings):
         expected_dimension: int,
         batch_size: int,
         query_instruction: str,
+        model_batch_capacity: int | None = None,
+        model_context_size: int | None = None,
         dll_directory_handle: Any | None = None,
     ) -> None:
         if expected_dimension <= 0:
@@ -59,6 +65,8 @@ class QwenEmbeddings(Embeddings):
 
         self.dimension = native_dimension
         self.batch_size = batch_size
+        self.model_batch_capacity = model_batch_capacity
+        self.model_context_size = model_context_size
         self.query_instruction = query_instruction.strip()
         self._model: LlamaEmbeddingModel | None = model
         self._dll_directory_handle = dll_directory_handle
@@ -103,6 +111,8 @@ class QwenEmbeddings(Embeddings):
             expected_dimension=settings.embedding_dimension,
             batch_size=settings.embedding_batch_size,
             query_instruction=settings.embedding_query_instruction,
+            model_batch_capacity=settings.embedding_n_batch,
+            model_context_size=settings.embedding_n_ctx,
             dll_directory_handle=dll_directory_handle,
         )
 
@@ -135,11 +145,22 @@ class QwenEmbeddings(Embeddings):
             model = self._require_open_model()
             for start in range(0, len(texts), self.batch_size):
                 batch = list(texts[start : start + self.batch_size])
-                raw_vectors = model.embed(
-                    batch,
-                    normalize=True,
-                    truncate=False,
-                )
+                self._validate_token_capacity(model, batch, start)
+                try:
+                    raw_vectors = model.embed(
+                        batch,
+                        normalize=True,
+                        truncate=False,
+                    )
+                except ValueError as error:
+                    if "exceed batch size" not in str(error):
+                        raise
+                    raise EmbeddingInputTooLongError(
+                        f"An embedding input exceeded EMBEDDING_N_BATCH="
+                        f"{self.model_batch_capacity}. Increase "
+                        "EMBEDDING_N_BATCH and restart FastAPI. The input was "
+                        "not truncated."
+                    ) from error
                 vectors = _coerce_sequence_embeddings(raw_vectors)
                 embeddings.extend(
                     validate_embedding_vectors(
@@ -150,6 +171,41 @@ class QwenEmbeddings(Embeddings):
                 )
 
         return embeddings
+
+    def _validate_token_capacity(
+        self,
+        model: LlamaEmbeddingModel,
+        texts: list[str],
+        start_index: int,
+    ) -> None:
+        tokenize = getattr(model, "tokenize", None)
+        if not callable(tokenize):
+            return
+        for offset, text in enumerate(texts):
+            token_count = len(tokenize(text.encode("utf-8")))
+            input_number = start_index + offset + 1
+            if (
+                self.model_context_size is not None
+                and token_count > self.model_context_size
+            ):
+                raise EmbeddingInputTooLongError(
+                    f"Embedding input {input_number} requires {token_count} "
+                    f"tokens, exceeding EMBEDDING_N_CTX="
+                    f"{self.model_context_size}. Reduce the chunk size or "
+                    "increase EMBEDDING_N_CTX, then restart FastAPI. The "
+                    "input was not truncated."
+                )
+            if (
+                self.model_batch_capacity is not None
+                and token_count > self.model_batch_capacity
+            ):
+                raise EmbeddingInputTooLongError(
+                    f"Embedding input {input_number} requires {token_count} "
+                    f"tokens, exceeding EMBEDDING_N_BATCH="
+                    f"{self.model_batch_capacity}. Increase "
+                    "EMBEDDING_N_BATCH and restart FastAPI. The input was "
+                    "not truncated."
+                )
 
     def _require_open_model(self) -> LlamaEmbeddingModel:
         if self._model is None:

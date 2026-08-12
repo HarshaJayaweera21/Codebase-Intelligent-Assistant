@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
+from pinecone.errors import NotFoundError
 
 from app.core.config import Settings
 from app.vectorstores.pinecone_vector_store import (
@@ -38,12 +39,15 @@ class FakeIndex:
         self.queries: list[dict] = []
         self.matches: list[SimpleNamespace] = []
         self.closed = False
+        self.delete_error: Exception | None = None
 
     def upsert(self, **kwargs):
         self.upserts.append(kwargs)
 
     def delete(self, **kwargs):
         self.deletes.append(kwargs)
+        if self.delete_error is not None:
+            raise self.delete_error
 
     def query(self, **kwargs):
         self.queries.append(kwargs)
@@ -85,15 +89,22 @@ class FakePineconeClient:
         self.closed = True
 
 
-def make_document(content: str, *, repository_id: str = "repo_a1b2c3d4"):
+def make_document(
+    content: str,
+    *,
+    repository_id: str = "repo_a1b2c3d4",
+    file_path: str = "src/example.py",
+    symbol_name: str | None = None,
+    chunk_type: str = "function",
+):
     return Document(
         page_content=content,
         metadata={
             "repository_id": repository_id,
-            "file_path": "src/example.py",
+            "file_path": file_path,
             "language": "Python",
-            "chunk_type": "function",
-            "symbol_name": None,
+            "chunk_type": chunk_type,
+            "symbol_name": symbol_name,
             "symbol_start_line": 4,
             "symbol_end_line": 8,
             "source_ranges": [{"start_line": 4, "end_line": 8}],
@@ -160,9 +171,56 @@ class PineconeVectorStoreTests(unittest.TestCase):
         self.assertEqual(results[0].vector_score, 0.91)
         self.assertGreater(results[0].score, results[0].vector_score)
         self.assertEqual(self.index.queries[0]["namespace"], "repo_a1b2c3d4")
-        self.assertEqual(self.index.queries[0]["top_k"], 9)
+        self.assertEqual(self.index.queries[0]["top_k"], 24)
         self.assertTrue(self.index.queries[0]["include_metadata"])
         self.assertEqual(self.embeddings.query_input, "where is the example?")
+
+    def test_search_deduplicates_and_limits_repeated_files(self):
+        documents = [
+            make_document(
+                "void addOrder() { queue.add(order); }",
+                file_path="src/CustomOrderQueue.java",
+                symbol_name="addOrder",
+                chunk_type="method",
+            ),
+            make_document(
+                "void removeOrder() { queue.remove(); }",
+                file_path="src/CustomOrderQueue.java",
+                symbol_name="removeOrder",
+                chunk_type="method",
+            ),
+            make_document(
+                "void updateQueue() { service.update(); }",
+                file_path="src/OrderQueueService.java",
+                symbol_name="updateQueue",
+                chunk_type="method",
+            ),
+        ]
+        self.store.index_documents("repo_a1b2c3d4", documents)
+        vectors = [
+            vector
+            for upsert in self.index.upserts
+            for vector in upsert["vectors"]
+        ]
+        self.index.matches = [
+            SimpleNamespace(id=vector["id"], score=score, metadata=vector["metadata"])
+            for vector, score in zip(vectors, (0.95, 0.94, 0.80), strict=True)
+        ]
+        self.index.matches.append(self.index.matches[0])
+        self.store.max_chunks_per_file = 1
+
+        results = self.store.search(
+            "repo_a1b2c3d4",
+            "How is the order queue implemented?",
+            top_k=2,
+        )
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(
+            {result.document.metadata["file_path"] for result in results},
+            {"src/CustomOrderQueue.java", "src/OrderQueueService.java"},
+        )
+        self.assertEqual(len({result.vector_id for result in results}), 2)
 
     def test_rejects_document_from_another_repository(self):
         with self.assertRaisesRegex(ValueError, "must match"):
@@ -182,6 +240,43 @@ class PineconeVectorStoreTests(unittest.TestCase):
             self.index.deletes,
             [{"delete_all": True, "namespace": "repo_a1b2c3d4"}],
         )
+
+    def test_missing_namespace_is_already_successfully_deleted(self):
+        self.index.delete_error = NotFoundError("Namespace not found")
+
+        self.store.delete_repository("repo_a1b2c3d4")
+
+        self.assertEqual(
+            self.index.deletes,
+            [{"delete_all": True, "namespace": "repo_a1b2c3d4"}],
+        )
+
+    def test_large_payloads_are_split_below_configured_batch_count(self):
+        store = PineconeVectorStore(
+            index=self.index,
+            embeddings=self.embeddings,
+            dimension=3,
+            upsert_batch_size=50,
+            max_upsert_payload_bytes=500,
+        )
+        documents = [
+            make_document("content " + (str(index) * 180))
+            for index in range(3)
+        ]
+
+        count = store.index_documents("repo_a1b2c3d4", documents)
+
+        self.assertEqual(count, 3)
+        self.assertEqual(
+            [len(call["vectors"]) for call in self.index.upserts],
+            [1, 1, 1],
+        )
+
+    def test_delete_still_raises_other_pinecone_errors(self):
+        self.index.delete_error = RuntimeError("Pinecone unavailable")
+
+        with self.assertRaisesRegex(RuntimeError, "Pinecone unavailable"):
+            self.store.delete_repository("repo_a1b2c3d4")
 
     def test_vector_ids_are_stable_and_content_sensitive(self):
         document = make_document("same content")

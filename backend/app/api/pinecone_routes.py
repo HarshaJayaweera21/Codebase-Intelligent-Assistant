@@ -43,6 +43,8 @@ class SearchResultResponse(BaseModel):
     score: float
     vector_score: float
     lexical_score: float
+    exact_match_score: float
+    structural_score: float
     page_content: str
     metadata: dict[str, Any]
 
@@ -130,6 +132,8 @@ async def search_repository(
                 score=result.score,
                 vector_score=result.vector_score,
                 lexical_score=result.lexical_score,
+                exact_match_score=result.exact_match_score,
+                structural_score=result.structural_score,
                 page_content=result.document.page_content,
                 metadata=result.document.metadata,
             )
@@ -161,6 +165,6 @@ def _resolve_repository_path(repository_id: str) -> Path:
 def _validate_repository_id(repository_id: str) -> None:
     if REPOSITORY_ID_PATTERN.fullmatch(repository_id) is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Invalid repository_id.",
         )

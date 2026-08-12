@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.embeddings.qwen_embeddings import (
+    EmbeddingInputTooLongError,
     EmbeddingModelLoadError,
     QwenEmbeddings,
 )
@@ -32,6 +33,16 @@ class FakeLlamaEmbeddingModel:
 
     def close(self) -> None:
         self.closed = True
+
+
+class TokenCountingFakeModel(FakeLlamaEmbeddingModel):
+    def tokenize(
+        self,
+        text: bytes,
+        add_bos: bool = True,
+        special: bool = False,
+    ) -> list[int]:
+        return list(range(len(text.decode("utf-8").split())))
 
 
 def embeddings(
@@ -77,6 +88,25 @@ class QwenEmbeddingsTests(unittest.TestCase):
         model = FakeLlamaEmbeddingModel()
         service = embeddings(model)
         self.assertEqual(service.embed_documents([]), [])
+        self.assertEqual(model.calls, [])
+
+    def test_rejects_input_exceeding_model_batch_without_truncating(self):
+        model = TokenCountingFakeModel()
+        service = QwenEmbeddings(
+            model=model,
+            expected_dimension=model.dimension,
+            batch_size=2,
+            query_instruction="instruction",
+            model_batch_capacity=3,
+            model_context_size=10,
+        )
+
+        with self.assertRaisesRegex(
+            EmbeddingInputTooLongError,
+            r"requires 4 tokens.*EMBEDDING_N_BATCH=3",
+        ):
+            service.embed_documents(["one two three four"])
+
         self.assertEqual(model.calls, [])
 
     def test_native_dimension_must_match_configuration(self):
