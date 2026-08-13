@@ -17,6 +17,9 @@ models/**/*.gguf
 
 # Locally cloned repositories
 storage/repositories/*
+storage/*.db
+storage/*.db-shm
+storage/*.db-wal
 
 # Keep the empty directory in Git
 !storage/repositories/.gitkeep
