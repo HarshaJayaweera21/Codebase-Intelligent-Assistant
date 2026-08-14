@@ -1,4 +1,5 @@
-from typing import Literal
+from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from app.models.repository_scan import RepositoryScanSummary
@@ -28,6 +29,17 @@ class RepositoryCreateRequest(BaseModel):
         return url
 
 
+class RepositoryProcessingStatus(StrEnum):
+    QUEUED = "queued"
+    CLONING = "cloning"
+    SCANNING = "scanning"
+    CHUNKING = "chunking"
+    EMBEDDING = "embedding"
+    INDEXING = "indexing"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class RepositoryCreateResponse(BaseModel):
     repository_id: str
     chat_id: str
@@ -35,6 +47,29 @@ class RepositoryCreateResponse(BaseModel):
     repository_owner: str
     repository_url: str
     local_path: str
-    status: Literal["scanned"]
-    scan_summary: RepositoryScanSummary
+    status: RepositoryProcessingStatus
+    status_url: str
+
+
+class RepositoryStatusResponse(BaseModel):
+    repository_id: str
+    chat_id: str
+    repository_name: str
+    repository_owner: str
+    repository_url: str
+    status: RepositoryProcessingStatus
+    progress_percent: int = Field(ge=0, le=100)
+    status_message: str
+    created_at: datetime
+    updated_at: datetime
+    scan_summary: RepositoryScanSummary | None = None
+    chunk_count: int | None = None
+    indexed_document_count: int | None = None
+    error: str | None = None
+
+
+class RepositoryDeleteResponse(BaseModel):
+    repository_id: str
+    chat_id: str
+    deleted: bool = True
 

@@ -25,25 +25,36 @@ class RepositoryDetails:
     repository_url: str
     local_path: str
     status: str
-    scan_summary: RepositoryScanSummary
+    scan_summary: RepositoryScanSummary | None = None
+
+
+def prepare_repository(repository_url: str) -> RepositoryDetails:
+    normalized_url = repository_url.rstrip("/")
+    parsed_url = urlparse(normalized_url)
+    path_parts = [part for part in parsed_url.path.split("/") if part]
+    repository_owner = path_parts[0]
+    repository_name = remove_git_suffix(path_parts[1])
+    repository_id = f"repo_{uuid4().hex[:8]}"
+    chat_id = f"chat_{uuid4().hex[:8]}"
+    local_path = REPOSITORY_STORAGE_PATH / repository_id
+
+    return RepositoryDetails(
+        repository_id=repository_id,
+        chat_id=chat_id,
+        repository_name=repository_name,
+        repository_owner=repository_owner,
+        repository_url=normalized_url,
+        local_path=str(local_path),
+        status="queued",
+    )
 
 
 def create_repository(repository_url: str) -> RepositoryDetails:
-    normalized_url = repository_url.rstrip("/")
-
-    parsed_url = urlparse(normalized_url)
-    path_parts = [part for part in parsed_url.path.split("/") if part]
-
-    repository_owner = path_parts[0]
-    repository_name = remove_git_suffix(path_parts[1])
-
-    repository_id = f"repo_{uuid4().hex[:8]}"
-    chat_id = f"chat_{uuid4().hex[:8]}"
-
-    local_path = REPOSITORY_STORAGE_PATH / repository_id
+    repository = prepare_repository(repository_url)
+    local_path = Path(repository.local_path)
 
     clone_repository(
-        repository_url=normalized_url,
+        repository_url=repository.repository_url,
         destination=local_path,
     )
 
@@ -62,18 +73,23 @@ def create_repository(repository_url: str) -> RepositoryDetails:
         ) from error
 
     return RepositoryDetails(
-        repository_id=repository_id,
-        chat_id=chat_id,
-        repository_name=repository_name,
-        repository_owner=repository_owner,
-        repository_url=normalized_url,
+        repository_id=repository.repository_id,
+        chat_id=repository.chat_id,
+        repository_name=repository.repository_name,
+        repository_owner=repository.repository_owner,
+        repository_url=repository.repository_url,
         local_path=str(local_path),
         status="scanned",
         scan_summary=scan_result.summary,
     )
 
 
-def clone_repository(repository_url: str, destination: Path) -> None:
+def clone_repository(
+    repository_url: str,
+    destination: Path,
+    *,
+    timeout_seconds: int = 120,
+) -> None:
     REPOSITORY_STORAGE_PATH.mkdir(
         parents=True,
         exist_ok=True,
@@ -98,7 +114,7 @@ def clone_repository(repository_url: str, destination: Path) -> None:
             command,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=timeout_seconds,
             check=False,
         )
 

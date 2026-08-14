@@ -11,3 +11,11 @@ class RepositoryScanError(Exception):
     def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(message)
+
+
+class RepositoryLimitError(Exception):
+    """Raised when a repository exceeds a configured processing limit."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
