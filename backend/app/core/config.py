@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     embedding_cuda_dll_directory: Path | None = None
     embedding_n_gpu_layers: int = -1
     embedding_n_ctx: int = 4096
-    embedding_n_batch: int = 512
+    embedding_n_batch: int = 1024
     embedding_batch_size: int = 4
     embedding_dimension: int = 2560
     embedding_query_instruction: str = DEFAULT_QUERY_INSTRUCTION
@@ -40,8 +40,29 @@ class Settings(BaseSettings):
     pinecone_cloud: str = "aws"
     pinecone_region: str = "us-east-1"
     pinecone_upsert_batch_size: int = 50
-    retrieval_candidate_multiplier: int = 3
+    retrieval_candidate_multiplier: int = 8
     retrieval_semantic_weight: float = 0.8
+    retrieval_exact_match_boost: float = 0.12
+    retrieval_structural_boost: float = 0.12
+    retrieval_diversity_weight: float = 0.1
+    retrieval_max_chunks_per_file: int = 2
+    gemini_enabled: bool = False
+    gemini_api_key: SecretStr | None = None
+    gemini_model: str = "gemini-3.6-flash"
+    gemini_thinking_level: str = "low"
+    rag_top_k: int = 5
+    rag_max_context_characters: int = 20_000
+    rag_max_question_characters: int = 4_000
+    rag_stream_retry_attempts: int = 2
+    database_path: Path = Path("storage/codebase_assistant.db")
+    cors_allowed_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173"
+    )
+    repository_clone_timeout_seconds: int = 120
+    repository_max_size_bytes: int = 262_144_000
+    repository_max_files: int = 20_000
+    repository_max_chunks: int = 10_000
+    repository_max_concurrent_jobs: int = 1
 
     @field_validator(
         "embedding_n_ctx",
@@ -51,6 +72,16 @@ class Settings(BaseSettings):
         "pinecone_index_dimension",
         "pinecone_upsert_batch_size",
         "retrieval_candidate_multiplier",
+        "retrieval_max_chunks_per_file",
+        "rag_top_k",
+        "rag_max_context_characters",
+        "rag_max_question_characters",
+        "rag_stream_retry_attempts",
+        "repository_clone_timeout_seconds",
+        "repository_max_size_bytes",
+        "repository_max_files",
+        "repository_max_chunks",
+        "repository_max_concurrent_jobs",
     )
     @classmethod
     def require_positive_integer(cls, value: int) -> int:
@@ -81,12 +112,33 @@ class Settings(BaseSettings):
             raise ValueError("must be cosine, euclidean, or dotproduct")
         return normalized
 
-    @field_validator("retrieval_semantic_weight")
+    @field_validator(
+        "retrieval_semantic_weight",
+        "retrieval_exact_match_boost",
+        "retrieval_structural_boost",
+        "retrieval_diversity_weight",
+    )
     @classmethod
     def validate_semantic_weight(cls, value: float) -> float:
         if not 0 <= value <= 1:
             raise ValueError("must be between zero and one")
         return value
+
+    @field_validator("gemini_model")
+    @classmethod
+    def validate_gemini_model(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized
+
+    @field_validator("gemini_thinking_level")
+    @classmethod
+    def validate_gemini_thinking_level(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"minimal", "low", "medium", "high"}:
+            raise ValueError("must be minimal, low, medium, or high")
+        return normalized
 
     @property
     def resolved_embedding_model_path(self) -> Path:
@@ -103,6 +155,21 @@ class Settings(BaseSettings):
         if not path.is_absolute():
             path = BACKEND_ROOT / path
         return path.resolve()
+
+    @property
+    def resolved_database_path(self) -> Path:
+        path = self.database_path.expanduser()
+        if not path.is_absolute():
+            path = BACKEND_ROOT / path
+        return path.resolve()
+
+    @property
+    def allowed_cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache

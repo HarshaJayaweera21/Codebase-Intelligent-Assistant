@@ -36,12 +36,21 @@ class FakeVectorStore:
         self.closed = True
 
 
+class FakeChatModel:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class EmbeddingLifespanTests(unittest.IsolatedAsyncioTestCase):
     async def test_loads_once_stores_service_and_closes_at_shutdown(self):
         settings = Settings(
             embedding_dimension=3,
             pinecone_index_dimension=3,
             pinecone_enabled=False,
+            gemini_enabled=False,
         )
         model = FakeLlamaEmbeddingModel()
         service = QwenEmbeddings(
@@ -67,11 +76,15 @@ class EmbeddingLifespanTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(load_count, 1)
             self.assertIs(app.state.embedding_service, service)
             self.assertIs(app.state.settings, settings)
+            self.assertTrue(hasattr(app.state, "repository_processing_store"))
+            self.assertIsNone(app.state.rag_service)
             self.assertFalse(model.closed)
 
         self.assertTrue(model.closed)
         self.assertFalse(hasattr(app.state, "embedding_service"))
         self.assertFalse(hasattr(app.state, "vector_store"))
+        self.assertFalse(hasattr(app.state, "repository_processing_store"))
+        self.assertFalse(hasattr(app.state, "rag_service"))
 
     async def test_enabled_pinecone_store_is_managed_by_lifespan(self):
         settings = Settings(
@@ -79,6 +92,7 @@ class EmbeddingLifespanTests(unittest.IsolatedAsyncioTestCase):
             pinecone_index_dimension=3,
             pinecone_enabled=True,
             pinecone_api_key="test-key",
+            gemini_enabled=False,
         )
         model = FakeLlamaEmbeddingModel()
         embedding_service = QwenEmbeddings(
@@ -118,6 +132,7 @@ class EmbeddingLifespanTests(unittest.IsolatedAsyncioTestCase):
             embedding_dimension=3,
             pinecone_index_dimension=2,
             pinecone_enabled=False,
+            gemini_enabled=False,
         )
         model = FakeLlamaEmbeddingModel()
         service = QwenEmbeddings(
@@ -138,6 +153,41 @@ class EmbeddingLifespanTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(model.closed)
         self.assertFalse(hasattr(app.state, "embedding_service"))
+
+    async def test_enabled_gemini_rag_is_managed_by_lifespan(self):
+        settings = Settings(
+            embedding_dimension=3,
+            pinecone_index_dimension=3,
+            pinecone_enabled=True,
+            pinecone_api_key="test-key",
+            gemini_enabled=True,
+            gemini_api_key="test-gemini-key",
+        )
+        model = FakeLlamaEmbeddingModel()
+        embedding_service = QwenEmbeddings(
+            model=model,
+            expected_dimension=3,
+            batch_size=2,
+            query_instruction="instruction",
+        )
+        vector_store = FakeVectorStore()
+        chat_model = FakeChatModel()
+        lifespan = create_lifespan(
+            settings_provider=lambda: settings,
+            embedding_factory=lambda _: embedding_service,
+            vector_store_factory=lambda *_: vector_store,
+            chat_model_factory=lambda _: chat_model,
+        )
+        app = FastAPI(lifespan=lifespan)
+
+        async with lifespan(app):
+            self.assertIsNotNone(app.state.rag_service)
+            self.assertFalse(chat_model.closed)
+
+        self.assertTrue(chat_model.closed)
+        self.assertTrue(vector_store.closed)
+        self.assertTrue(model.closed)
+        self.assertFalse(hasattr(app.state, "rag_service"))
 
 
 if __name__ == "__main__":
